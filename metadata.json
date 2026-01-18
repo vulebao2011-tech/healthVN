@@ -1,0 +1,7 @@
+{
+  "name": "Health VN",
+  "description": "Trợ lý bảo vệ sức khỏe và hô hấp thông minh cho người Việt, tích hợp AI phân tích rủi ro môi trường và nút hỗ trợ khẩn cấp.",
+  "requestFramePermissions": [
+    "geolocation"
+  ]
+}
