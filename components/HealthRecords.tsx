@@ -6,9 +6,11 @@ interface HealthRecordsProps {
   records: HealthRecord[];
   setRecords: (records: HealthRecord[]) => void;
   onSetupReminders: (record: HealthRecord) => void;
+  // Added activeProfileId to props to link records to users
+  activeProfileId: string;
 }
 
-const HealthRecords: React.FC<HealthRecordsProps> = ({ records, setRecords, onSetupReminders }) => {
+const HealthRecords: React.FC<HealthRecordsProps> = ({ records, setRecords, onSetupReminders, activeProfileId }) => {
   const [showAdd, setShowAdd] = useState(false);
   const [newRecord, setNewRecord] = useState<Partial<HealthRecord>>({
     type: 'Prescription',
@@ -17,8 +19,10 @@ const HealthRecords: React.FC<HealthRecordsProps> = ({ records, setRecords, onSe
   });
 
   const handleSave = () => {
+    // Fixed: Added userId property which was missing and causing a type error
     const record: HealthRecord = {
       id: Date.now().toString(),
+      userId: activeProfileId,
       date: new Date().toLocaleDateString('vi-VN'),
       type: newRecord.type as any,
       title: newRecord.title || 'Hồ sơ mới',

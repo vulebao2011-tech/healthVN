@@ -1,39 +1,30 @@
 
 import { GoogleGenAI, Type } from "@google/genai";
-import { UserProfile, EnvironmentalData, RiskAnalysis, SymptomLog } from "../types";
+import { UserProfile, EnvironmentalData, RiskAnalysis, SymptomLog, ChatMessage } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
 
 export const getPersonalizedRisk = async (
   profile: UserProfile,
   env: EnvironmentalData,
   recentLogs: SymptomLog[]
 ): Promise<RiskAnalysis> => {
-  const isGeneral = profile.userType === 'GENERAL';
-  
   const prompt = `
-    Bạn là chuyên gia hô hấp hàng đầu. Hãy phân tích rủi ro môi trường dựa trên dữ liệu sau:
-
-    HỒ SƠ NGƯỜI DÙNG:
-    - Loại: ${profile.userType === 'SENSITIVE' ? 'Người nhạy cảm (Hen/Dị ứng)' : 'Người bình thường'}
+    Bạn là bác sĩ chuyên khoa hô hấp tại Việt Nam.
+    Hãy phân tích rủi ro cho bệnh nhân:
     - Tên: ${profile.name}
-    - Mức độ: ${profile.severity}
+    - Mức độ bệnh: ${profile.severity}
     - Ngưỡng AQI nhạy cảm: ${profile.thresholdAQI}
-    - Yếu tố kích phát: ${profile.triggers.join(', ')}
-
-    ĐIỀU KIỆN MÔI TRƯỜNG CHI TIẾT:
-    - AQI: ${env.aqi}, Chính: ${env.mainPollutant}
-    - Nhiệt độ: ${env.temp}°C, Độ ẩm: ${env.humidity}%
-    - Tốc độ gió: ${env.windSpeed} km/h (Gió mạnh gây bụi cuốn)
-    - Phấn hoa: ${env.pollenLevel}
-    - Chỉ số UV: ${env.uvIndex} (UV cao thường đi kèm Ozone tầng mặt gây rát phổi)
-    - NO2/SO2: ${env.no2}/${env.so2} µg/m³
+    - Dị ứng: ${profile.allergies.join(', ') || 'Không'}
+    - Cần tránh: ${profile.thingsToAvoid.join(', ') || 'Không'}
+    - Vị trí hiện tại: ${env.location}
+    - AQI đo được: ${env.aqi}
 
     YÊU CẦU:
-    1. Nếu là người NHẠY CẢM: So sánh AQI hiện tại với ngưỡng ${profile.thresholdAQI} và các yếu tố kích phát.
-    2. Nếu là người BÌNH THƯỜNG: Tập trung vào "Phòng ngừa" bệnh đường hô hấp (viêm họng, viêm xoang, cúm).
-    3. Phân tích sự kết hợp: VD Độ ẩm cao (>80%) dễ gây nấm mốc; Gió mạnh + AQI cao gây bụi thô vào sâu mũi.
-    4. Trả về lời khuyên cực kỳ cụ thể, không chung chung.
+    1. KHÔNG trả lời chung chung. 
+    2. Nếu AQI (${env.aqi}) > Ngưỡng nhạy cảm (${profile.thresholdAQI}), hãy cảnh báo rủi ro cao.
+    3. Trả về đúng định dạng JSON với danh sách recommendations là các hành động cụ thể (VD: "Đeo khẩu trang N95 ngay khi ra đường tại ${env.location}", "Uống thêm nước ấm để loãng đờm").
+    4. Recommendations phải ngắn gọn, dạng checklist (dưới 15 từ mỗi câu).
   `;
 
   try {
@@ -48,7 +39,7 @@ export const getPersonalizedRisk = async (
             riskLevel: { type: Type.STRING, enum: ['LOW', 'MEDIUM', 'HIGH', 'EXTREME'] },
             message: { type: Type.STRING },
             recommendations: { type: Type.ARRAY, items: { type: Type.STRING } },
-            preventionTips: { type: Type.ARRAY, items: { type: Type.STRING }, description: "Lời khuyên phòng bệnh cho người khỏe mạnh" },
+            preventionTips: { type: Type.ARRAY, items: { type: Type.STRING } },
           },
           required: ['riskLevel', 'message', 'recommendations', 'preventionTips'],
         },
@@ -57,12 +48,30 @@ export const getPersonalizedRisk = async (
 
     return JSON.parse(response.text || '{}') as RiskAnalysis;
   } catch (error) {
-    console.error("Analysis Error:", error);
     return {
-      riskLevel: env.aqi > (isGeneral ? 150 : profile.thresholdAQI) ? 'HIGH' : 'LOW',
-      message: `Môi trường hiện tại có chỉ số AQI là ${env.aqi}.`,
-      recommendations: ["Đeo khẩu trang khi ra ngoài"],
-      preventionTips: ["Xịt khoáng mũi hàng ngày để làm sạch bụi mịn"]
+      riskLevel: env.aqi > profile.thresholdAQI ? 'HIGH' : 'LOW',
+      message: `AQI tại ${env.location} là ${env.aqi}. Hãy chú ý sức khỏe hô hấp.`,
+      recommendations: ["Đeo khẩu trang khi ra ngoài", "Mang theo thuốc xịt cắt cơn"],
+      preventionTips: ["Hạn chế vận động mạnh"]
     };
   }
+};
+
+export const getHealthConsultation = async (
+  profile: UserProfile,
+  logs: SymptomLog[],
+  history: ChatMessage[]
+) => {
+  const chat = ai.chats.create({
+    model: 'gemini-3-flash-preview',
+    config: {
+      systemInstruction: `Bạn là Dr. Health VN. 
+      Tư vấn chuyên sâu dựa trên hồ sơ bệnh hô hấp (${profile.severity}) và AQI thực tế. 
+      Tuyệt đối không đưa ra lời khuyên sáo rỗng. 
+      Trả lời bằng tiếng Việt, giọng điệu ân cần nhưng chuyên nghiệp.`,
+    }
+  });
+
+  const response = await chat.sendMessage({ message: history[history.length - 1].text });
+  return response.text;
 };

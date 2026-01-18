@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { MedicationReminder, AlarmSoundType } from '../types';
 
 interface RemindersProps {
@@ -19,6 +19,7 @@ const Reminders: React.FC<RemindersProps> = ({ reminders, setReminders, medicati
     alarmSound: 'default'
   });
 
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const today = new Date().toISOString().split('T')[0];
 
   useEffect(() => {
@@ -35,10 +36,46 @@ const Reminders: React.FC<RemindersProps> = ({ reminders, setReminders, medicati
       medicationName: newReminder.medicationName || medications[0] || 'Thuốc mới',
       time: newReminder.time || '08:00',
       enabled: true,
-      alarmSound: newReminder.alarmSound || 'default'
+      alarmSound: newReminder.alarmSound || 'default',
+      customSoundData: newReminder.customSoundData,
+      customSoundName: newReminder.customSoundName
     };
     setReminders([...reminders, reminder]);
     setShowAdd(false);
+    setNewReminder({
+      medicationName: medications[0] || '',
+      time: '08:00',
+      enabled: true,
+      alarmSound: 'default'
+    });
+  };
+
+  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (file.size > 2 * 1024 * 1024) {
+        alert("File âm thanh quá lớn. Vui lòng chọn file dưới 2MB.");
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const base64 = event.target?.result as string;
+        setNewReminder({ 
+          ...newReminder, 
+          alarmSound: 'custom', 
+          customSoundData: base64,
+          customSoundName: file.name
+        });
+      };
+      reader.readAsDataURL(file);
+    }
+  };
+
+  const playPreview = (data?: string) => {
+    if (data) {
+      const audio = new Audio(data);
+      audio.play().catch(e => console.error("Error playing audio:", e));
+    }
   };
 
   const addQuickSlot = (time: string) => {
@@ -47,7 +84,9 @@ const Reminders: React.FC<RemindersProps> = ({ reminders, setReminders, medicati
       medicationName: newReminder.medicationName || medications[0] || 'Thuốc mới',
       time,
       enabled: true,
-      alarmSound: newReminder.alarmSound || 'default'
+      alarmSound: newReminder.alarmSound || 'default',
+      customSoundData: newReminder.customSoundData,
+      customSoundName: newReminder.customSoundName
     };
     setReminders([...reminders, reminder]);
   };
@@ -83,6 +122,7 @@ const Reminders: React.FC<RemindersProps> = ({ reminders, setReminders, medicati
       case 'voice': return 'fa-comment-dots';
       case 'gentle': return 'fa-leaf';
       case 'energetic': return 'fa-bolt';
+      case 'custom': return 'fa-music';
       default: return 'fa-bell';
     }
   };
@@ -98,7 +138,8 @@ const Reminders: React.FC<RemindersProps> = ({ reminders, setReminders, medicati
     { label: 'Mặc định', value: 'default' },
     { label: 'Nhẹ nhàng', value: 'gentle' },
     { label: 'Sôi nổi', value: 'energetic' },
-    { label: 'Giọng nói', value: 'voice' }
+    { label: 'Giọng nói', value: 'voice' },
+    { label: 'Âm riêng', value: 'custom' }
   ];
 
   return (
@@ -136,18 +177,48 @@ const Reminders: React.FC<RemindersProps> = ({ reminders, setReminders, medicati
 
               <div>
                 <label className="text-[10px] font-bold text-slate-400 uppercase mb-3 block tracking-widest">Âm báo thức</label>
-                <div className="grid grid-cols-2 gap-2">
+                <div className="grid grid-cols-3 gap-2">
                   {soundOptions.map(opt => (
                     <button
                       key={opt.value}
-                      onClick={() => setNewReminder({...newReminder, alarmSound: opt.value})}
-                      className={`flex items-center gap-3 p-3 rounded-xl border transition-all ${newReminder.alarmSound === opt.value ? 'bg-indigo-600 border-indigo-600 text-white shadow-md' : 'bg-slate-50 border-slate-100 text-slate-500'}`}
+                      onClick={() => opt.value === 'custom' && !newReminder.customSoundData ? fileInputRef.current?.click() : setNewReminder({...newReminder, alarmSound: opt.value})}
+                      className={`flex flex-col items-center justify-center gap-1.5 p-3 rounded-xl border transition-all ${newReminder.alarmSound === opt.value ? 'bg-indigo-600 border-indigo-600 text-white shadow-md' : 'bg-slate-50 border-slate-100 text-slate-500'}`}
                     >
                       <i className={`fas ${getSoundIcon(opt.value)} text-sm`}></i>
-                      <span className="text-xs font-bold">{opt.label}</span>
+                      <span className="text-[9px] font-black uppercase tracking-tighter">{opt.label}</span>
                     </button>
                   ))}
                 </div>
+                
+                {newReminder.alarmSound === 'custom' && newReminder.customSoundData && (
+                  <div className="mt-3 p-3 bg-indigo-50 rounded-2xl border border-indigo-100 flex items-center justify-between">
+                    <div className="flex items-center gap-2 overflow-hidden">
+                      <i className="fas fa-file-audio text-indigo-500"></i>
+                      <p className="text-[10px] font-bold text-indigo-700 truncate">{newReminder.customSoundName || 'Âm thanh đã tải'}</p>
+                    </div>
+                    <div className="flex gap-2">
+                      <button 
+                        onClick={() => playPreview(newReminder.customSoundData)}
+                        className="w-7 h-7 bg-white text-indigo-600 rounded-lg flex items-center justify-center shadow-sm"
+                      >
+                        <i className="fas fa-play text-[10px]"></i>
+                      </button>
+                      <button 
+                        onClick={() => fileInputRef.current?.click()}
+                        className="w-7 h-7 bg-white text-slate-400 rounded-lg flex items-center justify-center shadow-sm"
+                      >
+                        <i className="fas fa-redo text-[10px]"></i>
+                      </button>
+                    </div>
+                  </div>
+                )}
+                <input 
+                  type="file" 
+                  ref={fileInputRef} 
+                  className="hidden" 
+                  accept="audio/*" 
+                  onChange={handleFileUpload}
+                />
               </div>
               
               <div>
@@ -215,7 +286,11 @@ const Reminders: React.FC<RemindersProps> = ({ reminders, setReminders, medicati
                     <div>
                       <div className="flex items-center gap-2">
                         <h4 className="text-xl font-black text-slate-800 tracking-tighter">{r.time}</h4>
-                        <i className={`fas ${getSoundIcon(r.alarmSound || 'default')} text-[10px] text-slate-300`}></i>
+                        <button 
+                          onClick={() => playPreview(r.customSoundData)}
+                          disabled={!r.customSoundData}
+                          className={`fas ${getSoundIcon(r.alarmSound || 'default')} text-[10px] ${r.customSoundData ? 'text-indigo-500' : 'text-slate-300'}`}
+                        ></button>
                       </div>
                       <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest truncate max-w-[120px]">{r.medicationName}</p>
                     </div>
@@ -259,7 +334,7 @@ const Reminders: React.FC<RemindersProps> = ({ reminders, setReminders, medicati
       <div className="mt-8 bg-indigo-50 rounded-3xl p-5 border border-indigo-100">
         <h4 className="text-[10px] font-black text-indigo-900 uppercase mb-2">Thông tin âm báo</h4>
         <p className="text-[10px] text-indigo-700 leading-tight">
-          Hệ thống sẽ tự động sử dụng <strong>Giọng nói AI</strong> để đọc tên thuốc khi đến giờ báo thức nếu bạn chọn kiểu chuông "Giọng nói".
+          Hệ thống hỗ trợ <strong>âm thanh riêng</strong>. Tải lên file nhạc yêu thích của bạn để việc uống thuốc trở nên thú vị hơn. Giới hạn 2MB.
         </p>
       </div>
     </div>
